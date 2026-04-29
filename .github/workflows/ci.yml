@@ -1,0 +1,109 @@
+# .github/workflows/ci.yml
+# University Notice Board - CI/CD Pipeline
+# Runs on every push to develop and on PRs targeting develop
+
+name: Notice Board CI/CD Pipeline
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop]
+
+jobs:
+  # ─────────────────────────────────────────
+  # JOB 1: Code Quality Checks
+  # Runs HTMLHint and Stylelint
+  # ─────────────────────────────────────────
+  code-quality:
+    name: Lint HTML and CSS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Run HTMLHint on all HTML files
+        run: npm run lint:html
+
+      - name: Run Stylelint on all CSS files
+        run: npm run lint:css
+
+  # ─────────────────────────────────────────
+  # JOB 2: Build Website with Parcel
+  # Only runs if code-quality job passed
+  # ─────────────────────────────────────────
+  build-website:
+    name: Build Static Site with Parcel
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Build website using Parcel
+        run: npm run build
+
+      - name: Upload build artifact (dist folder)
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-dist
+          path: dist/
+          retention-days: 1
+
+  # ─────────────────────────────────────────
+  # JOB 3: Build Docker Image and Push to Hub
+  # Only runs if build-website job passed
+  # Only runs on push to develop/main (not on PRs)
+  # ─────────────────────────────────────────
+  docker-build-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: build-website
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (for Dockerfile build stage)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/uni-notice-board:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/uni-notice-board:${{ github.sha }}
