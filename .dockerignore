@@ -1,0 +1,10 @@
+node_modules/
+.parcel-cache/
+.git/
+*.md
+.gitignore
+src/
+styles/
+package.json
+.htmlhintrc
+.stylelintrc.json
